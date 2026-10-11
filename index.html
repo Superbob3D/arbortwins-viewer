@@ -1,82 +1,165 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="utf-8">
-	<meta name="description" content="">
-	<meta name="author" content="">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-	<title>Potree Viewer</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArborTwins Point Cloud Viewer</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/potree@1.8.21/build/potree/potree.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-	<link rel="stylesheet" type="text/css" href="./libs/potree/potree.css">
-	<link rel="stylesheet" type="text/css" href="./libs/jquery-ui/jquery-ui.min.css">
-	<link rel="stylesheet" type="text/css" href="./libs/openlayers3/ol.css">
-	<link rel="stylesheet" type="text/css" href="./libs/spectrum/spectrum.css">
-	<link rel="stylesheet" type="text/css" href="./libs/jstree/themes/mixed/style.css">
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: #1a1a1a;
+        }
+
+        #viewer {
+            width: 100%;
+            height: 100vh;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+            max-width: 300px;
+        }
+
+        #info h2 {
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        #info p {
+            margin: 5px 0;
+            line-height: 1.4;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 200;
+        }
+
+        .progress-bar {
+            width: 200px;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            margin: 15px auto;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+    </style>
 </head>
-
 <body>
-	<script src="./libs/jquery/jquery-3.1.1.min.js"></script>
-	<script src="./libs/spectrum/spectrum.js"></script>
-	<script src="./libs/jquery-ui/jquery-ui.min.js"></script>
-	<script src="./libs/other/BinaryHeap.js"></script>
-	<script src="./libs/tween/tween.min.js"></script>
-	<script src="./libs/d3/d3.js"></script>
-	<script src="./libs/proj4/proj4.js"></script>
-	<script src="./libs/openlayers3/ol.js"></script>
-	<script src="./libs/i18next/i18next.js"></script>
-	<script src="./libs/jstree/jstree.js"></script>
-	<script src="./libs/potree/potree.js"></script>
-	<script src="./libs/plasio/js/laslaz.js"></script>
-	
-	<!-- INCLUDE ADDITIONAL DEPENDENCIES HERE -->
-	<!-- INCLUDE SETTINGS HERE -->
-	
-	<div class="potree_container" style="position: absolute; width: 100%; height: 100%; left: 0px; top: 0px; ">
-		<div id="potree_render_area" style="background-image: url('../build/potree/resources/images/background.jpg');"></div>
-		<div id="potree_sidebar_container"> </div>
-	</div>
-	
-	<script>
-	
-		window.viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
-		
-		viewer.setEDLEnabled(true);
-		viewer.setFOV(60);
-		viewer.setPointBudget(2_000_000);
-		<!-- INCLUDE SETTINGS HERE -->
-		viewer.loadSettingsFromURL();
-		
-		viewer.setDescription("");
-		
-		viewer.loadGUI(() => {
-			viewer.setLanguage('en');
-			$("#menu_appearance").next().show();
-			$("#menu_tools").next().show();
-			$("#menu_clipping").next().show();
-			viewer.toggleSidebar();
-		});
-		
-		
+    <div id="viewer"></div>
 
-		Potree.loadPointCloud("./pointclouds/viewer/metadata.json", "viewer", e => {
-			let scene = viewer.scene;
-			let pointcloud = e.pointcloud;
-			
-			let material = pointcloud.material;
-			material.size = 1;
-			material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
-			material.shape = Potree.PointShape.SQUARE;
-			material.activeAttributeName = "rgba";
-			
-			scene.addPointCloud(pointcloud);
-			
-			viewer.fitToScreen();
-		});
+    <div id="loading">
+        <h2>Loading Point Cloud...</h2>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <p id="loadingStatus">Initializing...</p>
+    </div>
 
-		
-		
-	</script>
-	
-	
-  </body>
+    <div id="info">
+        <h2>ArborTwins Viewer</h2>
+        <p><strong>Project:</strong> HW_01</p>
+        <p><strong>Controls:</strong></p>
+        <p>• Mouse: Rotate & Pan</p>
+        <p>• Scroll: Zoom</p>
+        <p>• Right Click: Pan</p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/potree@1.8.21/build/potree/potree.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@r128/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@r128/examples/js/loaders/GLTFLoader.js"></script>
+    <script>
+        // Configuration
+        const R2_BASE_URL = 'https://arbortwins-clouds.r2.cloudflarestorage.com/HW_01';
+        const VIEWER_ELEMENT = document.getElementById('viewer');
+        const LOADING_ELEMENT = document.getElementById('loading');
+        const PROGRESS_FILL = document.getElementById('progressFill');
+        const LOADING_STATUS = document.getElementById('loadingStatus');
+
+        // Initialize viewer
+        let viewer = new Potree.Viewer(VIEWER_ELEMENT);
+        viewer.setEDLEnabled(false);
+        viewer.setPointBudget(1_000_000);
+
+        // Camera setup
+        viewer.scene.getActiveCamera().position.set(0, 0, 100);
+        viewer.scene.getActiveCamera().lookAt(0, 0, 0);
+
+        // Load point cloud from R2
+        function loadPointCloud() {
+            LOADING_STATUS.textContent = 'Fetching metadata...';
+
+            Potree.POCLoader.load(
+                R2_BASE_URL + '/metadata.json',
+                function(geometry, material) {
+                    const pointcloud = new Potree.PointCloud('HW_01', geometry, material);
+                    viewer.scene.addPointCloud(pointcloud);
+
+                    // Auto-fit camera
+                    const bbox = pointcloud.getBoundingBox();
+                    const size = bbox.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const fov = viewer.scene.getActiveCamera().fov * (Math.PI / 180);
+                    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                    cameraZ *= 1.5; // Add margin
+
+                    viewer.scene.getActiveCamera().position.z = cameraZ;
+                    viewer.scene.getActiveCamera().lookAt(
+                        bbox.getCenter(new THREE.Vector3())
+                    );
+
+                    // Hide loading UI
+                    LOADING_ELEMENT.style.display = 'none';
+                    LOADING_STATUS.textContent = 'Ready!';
+                },
+                function(event) {
+                    // Progress callback
+                    if (event.lengthComputable) {
+                        const percentComplete = (event.loaded / event.total) * 100;
+                        PROGRESS_FILL.style.width = percentComplete + '%';
+                        LOADING_STATUS.textContent = `Loading: ${Math.round(percentComplete)}%`;
+                    }
+                },
+                function(error) {
+                    LOADING_STATUS.textContent = 'Error loading point cloud. Check R2 URL.';
+                    console.error('Load error:', error);
+                }
+            );
+        }
+
+        // Start loading when page is ready
+        window.addEventListener('load', loadPointCloud);
+    </script>
+</body>
 </html>
